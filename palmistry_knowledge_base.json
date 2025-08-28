@@ -1,0 +1,37 @@
+{
+  "heart_line": {
+    "begins_below_index": "Content with love life.",
+    "begins_below_middle": "Selfish when it comes to love.",
+    "begins_between_middle_index": "Caring and understanding. A balance between emotional needs.",
+    "is_straight_and_short": "Less interest in romance.",
+    "touches_life_line": "Heart is broken easily.",
+    "is_long_and_curvy": "Freely expresses emotions and feelings.",
+    "is_straight": "You are more sensitive.",
+    "is_straight_and_parallel_to_head": "Good handle on emotions.",
+    "is_wavy": "Many relationships, absence of serious relationships.",
+    "has_circle": "Sad or depressed.",
+    "is_broken": "Emotional trauma.",
+    "is_clear_and_deep": "You will have a stable emotional life."
+  },
+  "head_line": {
+    "is_short": "Prefers physical achievements over mental ones.",
+    "is_curved_sloping": "Creativity.",
+    "curves_downward": "Inclination towards literature and fantasy.",
+    "curves_upward": "Aptitude for math, business, and logic.",
+    "is_separated_from_life": "Adventure, enthusiasm for life.",
+    "is_wavy": "Short attention span.",
+    "is_deep_long": "Thinking is clear and focused. The longer and deeper the head line is the more intricate your thinking process will be.",
+    "is_straight": "Thinks realistically. You are very down-to-earth and logical.",
+    "is_broken": "Inconsistencies in thought or has varying interests.",
+    "has_crosses": "Momentous decisions.",
+    "has_fork": "A 'writer’s fork'. This means that you may be more inventive and lean towards speaking or writing."
+  },
+  "life_line": {
+    "is_long_deep": "You’ll experience an abundance of vitality in your life.",
+    "reaches_middle": "You’ll have more energy throughout your life.",
+    "hugs_thumb": "Indicates lower energy.",
+    "starts_near_first_finger": "Reveals that you’re a go-getter.",
+    "starts_near_thumb": "You’re more likely to take life as it is handed to you.",
+    "starts_in_middle": "You’ve got a great balance of both of these aspects."
+  }
+}

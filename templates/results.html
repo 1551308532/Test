@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Palmistry AI - Your Results</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        padding: 2rem;
+      }
+      h1 {
+        margin-bottom: 2rem;
+      }
+      .results {
+        margin-bottom: 2rem;
+      }
+      .line {
+        margin-bottom: 1.5rem;
+      }
+      h2 {
+        text-transform: capitalize;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Your Palm Reading</h1>
+    <div class="results">
+      {% for line, analysis in results.items() %}
+        <div class="line">
+          <h2>{{ line.replace('_', ' ') }}</h2>
+          <ul>
+            {% for property, meaning in analysis.items() %}
+              <li><strong>{{ property.replace('_', ' ') }}:</strong> {{ meaning }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    </div>
+    <a href="/">Analyze another palm</a>
+  </body>
+</html>
