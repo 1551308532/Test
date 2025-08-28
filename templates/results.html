@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Palmistry AI - Your Results</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        padding: 2rem;
+      }
+      h1 {
+        margin-bottom: 2rem;
+        text-align: center;
+      }
+      .content-wrapper {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 2rem;
+      }
+      .results {
+        flex: 1 1 400px;
+        max-width: 500px;
+      }
+      .line {
+        margin-bottom: 1.5rem;
+      }
+      h2 {
+        text-transform: capitalize;
+        border-bottom: 2px solid #eee;
+        padding-bottom: 0.5rem;
+      }
+      .image-display {
+        flex: 1 1 400px;
+        text-align: center;
+      }
+      .image-display img {
+        max-width: 100%;
+        height: auto;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      .error {
+        color: #D8000C;
+        background-color: #FFD2D2;
+        border: 1px solid;
+        margin: 10px 0px;
+        padding:15px 10px 15px 50px;
+        background-repeat: no-repeat;
+        background-position: 10px center;
+      }
+      a {
+        display: block;
+        text-align: center;
+        margin-top: 2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Your Palm Reading</h1>
+
+    {% if error %}
+      <div class="error">
+        <p><strong>Analysis Failed:</strong> {{ error }}</p>
+      </div>
+    {% else %}
+      <div class="content-wrapper">
+        <div class="results">
+          {% for line, analysis in results.items() %}
+            <div class="line">
+              <h2>{{ line }}</h2>
+              <ul>
+                {% for property, meaning in analysis.items() %}
+                  <li><strong>{{ property }}:</strong> {{ meaning }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endfor %}
+        </div>
+        {% if image_url %}
+          <div class="image-display">
+            <h2>Detected Lines</h2>
+            <img src="{{ image_url }}" alt="Your palm with detected lines">
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <a href="/">Analyze another palm</a>
+  </body>
+</html>

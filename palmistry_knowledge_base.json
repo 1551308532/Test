@@ -1,0 +1,20 @@
+{
+  "heart_line": {
+    "length_long": "You freely express your emotions and feelings, and have a long and curvy love life.",
+    "length_short": "You have less interest in romance and may be more reserved.",
+    "curvature_curved": "You are caring, understanding, and expressive with your emotions.",
+    "curvature_straight": "You have a good handle on your emotions and may be more sensitive and realistic."
+  },
+  "head_line": {
+    "length_long": "Your thinking is clear, focused, and intricate.",
+    "length_short": "You tend to prefer physical achievements over mental ones.",
+    "curvature_curved": "You are creative and have an inclination towards literature and fantasy.",
+    "curvature_straight": "You think realistically and are very down-to-earth and logical."
+  },
+  "life_line": {
+    "length_long": "You will experience an abundance of vitality and energy in your life.",
+    "length_short": "You may have lower energy levels or prefer a less strenuous life.",
+    "curvature_curved": "You are a go-getter with enthusiasm for life and adventure.",
+    "curvature_straight": "You are more likely to take life as it is handed to you, with a steady approach."
+  }
+}

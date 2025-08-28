@@ -1,0 +1,5 @@
+# Ignore the uploads directory
+uploads/
+
+# Ignore log files
+*.log
