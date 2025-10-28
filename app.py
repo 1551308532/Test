@@ -1,221 +1,214 @@
-import json
-from flask import Flask, render_template, request, redirect, url_for
+import base64
+import io
 import os
-import cv2
-import mediapipe as mp
+import re
+import uuid
+from collections import defaultdict
+from statistics import mean, median, pvariance
+
+import easyocr
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import numpy as np
-from flask import Flask, render_template, request, redirect, url_for, jsonify
+from flask import Flask, flash, redirect, render_template, request, url_for
+from PIL import Image
+from werkzeug.utils import secure_filename
+
+UPLOAD_DIR = 'uploads'
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_DIR
+app.secret_key = 'ocr-analytics-secret-key'
 
-# Create uploads directory if it doesn't exist
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
 
-# Load the palmistry knowledge base
-with open('palmistry_knowledge_base.json', 'r') as f:
-    knowledge_base = json.load(f)
+_ocr_reader = None
 
-# Initialize MediaPipe solutions
-mp_hands = mp.solutions.hands
-
-def _find_palm_lines(image, landmarks):
-    """
-    Finds the three major palm lines in the image using landmarks to define ROIs.
-    """
-    h, w, _ = image.shape
-    lines = {}
-
-    # Convert landmarks to pixel coordinates
-    pixel_landmarks = [{'index': lm['index'], 'x': int(lm['x'] * w), 'y': int(lm['y'] * h)} for lm in landmarks]
-
-    # --- Utility function for processing an ROI ---
-    def process_roi(roi_coords):
-        x1, y1, x2, y2 = roi_coords
-        if x1 > x2: x1, x2 = x2, x1
-        if y1 > y2: y1, y2 = y2, y1
-
-        roi = image[y1:y2, x1:x2]
-        if roi.size == 0: return None
-
-        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-        blur = cv2.GaussianBlur(gray, (5, 5), 0)
-        thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
-
-        contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-
-        if not contours: return None
-
-        longest_contour = max(contours, key=cv2.contourArea)
-
-        # Convert points to full image coordinates
-        line_points = [{'x': p[0][0] + x1, 'y': p[0][1] + y1} for p in longest_contour]
-        return line_points
-
-    # --- Heart Line Detection ---
-    p5 = pixel_landmarks[5]  # INDEX_FINGER_MCP
-    p17 = pixel_landmarks[17] # PINKY_MCP
-    heart_roi_coords = (p5['x'], min(p5['y'], p17['y']) - int(0.05 * h), p17['x'], max(p5['y'], p17['y']) + int(0.15 * h))
-    heart_line_points = process_roi(heart_roi_coords)
-    if heart_line_points:
-        lines['heart_line'] = {'status': 'success', 'points': heart_line_points}
-    else:
-        lines['heart_line'] = {'status': 'error', 'message': 'Heart line not detected.'}
-
-    # --- Head Line Detection ---
-    p1 = pixel_landmarks[1] # THUMB_CMC
-    p13 = pixel_landmarks[13] # MIDDLE_FINGER_MCP
-    head_roi_y_center = p1['y'] + int((p5['y'] - p1['y']) * 0.5)
-    head_roi_coords = (p1['x'], head_roi_y_center - int(0.1 * h), p13['x'], head_roi_y_center + int(0.1 * h))
-    head_line_points = process_roi(head_roi_coords)
-    if head_line_points:
-        lines['head_line'] = {'status': 'success', 'points': head_line_points}
-    else:
-        lines['head_line'] = {'status': 'error', 'message': 'Head line not detected.'}
-
-    # --- Life Line Detection ---
-    # This is more complex due to its curve. We'll use a wider ROI.
-    p0 = pixel_landmarks[0] # WRIST
-    p2 = pixel_landmarks[2] # THUMB_MCP
-    p9 = pixel_landmarks[9] # MIDDLE_FINGER_MCP
-    life_roi_coords = (p0['x'] - int(0.1 * w), p9['y'], p2['x'] + int(0.2 * w), p0['y'])
-    life_line_points = process_roi(life_roi_coords)
-    if life_line_points:
-        lines['life_line'] = {'status': 'success', 'points': life_line_points}
-    else:
-        lines['life_line'] = {'status': 'error', 'message': 'Life line not detected.'}
-
-    return lines
+def get_ocr_reader():
+    global _ocr_reader
+    if _ocr_reader is None:
+        _ocr_reader = easyocr.Reader(['ch_sim', 'en'], gpu=False)
+    return _ocr_reader
 
 
-def _extract_line_features(lines, image_dims):
-    """
-    Analyzes the geometric properties of the detected palm lines.
-    """
-    features = {}
-    w, h = image_dims
-
-    for line_name, line_data in lines.items():
-        if line_data['status'] != 'success':
-            features[line_name] = {'status': 'error', 'message': f'{line_name} not detected.'}
-            continue
-
-        points = np.array([list(p.values()) for p in line_data['points']], dtype=np.int32)
-
-        # 1. Length Analysis
-        arc_length = cv2.arcLength(points, closed=False)
-        # Normalize length by palm width (a rough heuristic)
-        normalized_length = arc_length / w
-
-        length_feature = 'medium'
-        if normalized_length > 0.6:
-            length_feature = 'long'
-        elif normalized_length < 0.3:
-            length_feature = 'short'
-
-        # 2. Curvature Analysis
-        start_point = points[0]
-        end_point = points[-1]
-        straight_dist = np.linalg.norm(start_point - end_point)
-
-        curvature_feature = 'straight'
-        # Avoid division by zero
-        if straight_dist > 0:
-            ratio = arc_length / straight_dist
-            if ratio > 1.2:
-                curvature_feature = 'curved'
-
-        features[line_name] = {
-            'status': 'success',
-            'length': length_feature,
-            'curvature': curvature_feature,
-            # 'points': line_data['points'] # Keep points for potential drawing later
-        }
-
-    return features
+def _compute_center(bbox):
+    x = sum(point[0] for point in bbox) / 4
+    y = sum(point[1] for point in bbox) / 4
+    return x, y
 
 
-def _map_features_to_reading(features):
-    """
-    Maps the extracted line features to the human-readable interpretations
-    from the knowledge base.
-    """
-    reading = {}
-    for line_name, line_features in features.items():
-        if line_features['status'] != 'success':
-            # Use a more descriptive name for the UI
-            display_name = line_name.replace('_', ' ').title()
-            reading[display_name] = {'Error': f'Could not analyze {display_name}.'}
-            continue
-
-        line_reading = {}
-        # Map length feature
-        length_key = f"length_{line_features['length']}"
-        if length_key in knowledge_base[line_name]:
-            line_reading['Length'] = knowledge_base[line_name][length_key]
-
-        # Map curvature feature
-        curvature_key = f"curvature_{line_features['curvature']}"
-        if curvature_key in knowledge_base[line_name]:
-            line_reading['Curvature'] = knowledge_base[line_name][curvature_key]
-
-        display_name = line_name.replace('_', ' ').title()
-        reading[display_name] = line_reading if line_reading else {'Info': 'No specific interpretation found for the detected features.'}
-
-    return reading
-
-
-def _draw_lines_on_image(image, lines, original_filename):
-    """
-    Draws the detected lines on the image and saves it to the static folder.
-    Returns the file path of the new image.
-    """
-    colors = {
-        "heart_line": (0, 0, 255), "head_line": (0, 255, 0), "life_line": (255, 0, 0)
-    }
-    for line_name, line_data in lines.items():
-        if line_data['status'] == 'success':
-            points = np.array([list(p.values()) for p in line_data['points']], dtype=np.int32)
-            cv2.polylines(image, [points], isClosed=False, color=colors.get(line_name, (255,255,255)), thickness=2)
-
-    processed_filename = f"processed_{original_filename}"
-    save_path = os.path.join('static', 'processed', processed_filename)
-    # Ensure the directory exists
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    cv2.imwrite(save_path, image)
-    return save_path
-
-
-def analyze_palm(image_path, original_filename):
-    """
-    Orchestrates the full palm analysis pipeline, returning the reading and the path to the processed image.
-    """
-    with mp_hands.Hands(static_image_mode=True, max_num_hands=1, min_detection_confidence=0.5) as hands:
-        image = cv2.imread(image_path)
-        if image is None:
-            return {'status': 'error', 'message': 'Image not found or could not be read.'}
-
-        h, w, _ = image.shape
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        results = hands.process(image_rgb)
-
-        if results.multi_hand_landmarks:
-            hand_landmarks = results.multi_hand_landmarks[0]
-            landmarks_list = [{'index': idx, 'x': lm.x, 'y': lm.y, 'z': lm.z} for idx, lm in enumerate(hand_landmarks.landmark)]
-
-            palm_lines = _find_palm_lines(image.copy(), landmarks_list) # Use a copy for drawing
-            line_features = _extract_line_features(palm_lines, (w, h))
-            final_reading = _map_features_to_reading(line_features)
-            processed_image_path = _draw_lines_on_image(image, palm_lines, original_filename)
-
-            return {
-                'status': 'success',
-                'reading': final_reading,
-                'processed_image_path': processed_image_path
-            }
+def _cluster_by_axis(items, axis_key, threshold):
+    clusters = []
+    for item in sorted(items, key=lambda value: value[axis_key]):
+        if clusters and abs(item[axis_key] - clusters[-1]['avg']) <= threshold:
+            clusters[-1]['items'].append(item)
+            clusters[-1]['avg'] = np.mean([val[axis_key] for val in clusters[-1]['items']])
         else:
-            return {'status': 'error', 'message': 'No hand detected in the image.'}
+            clusters.append({'items': [item], 'avg': item[axis_key]})
+    return clusters
+
+
+def _merge_header_candidates(candidates):
+    if not candidates:
+        return []
+    sorted_candidates = sorted(candidates, key=lambda item: item['x'])
+    merged = []
+    current = {'texts': [sorted_candidates[0]['text']], 'xs': [sorted_candidates[0]['x']]}
+    for candidate in sorted_candidates[1:]:
+        if candidate['x'] - np.mean(current['xs']) <= 60:
+            current['texts'].append(candidate['text'])
+            current['xs'].append(candidate['x'])
+        else:
+            merged.append({
+                'name': re.sub(r'\s+', ' ', ' '.join(current['texts'])).strip(),
+                'x': float(np.mean(current['xs']))
+            })
+            current = {'texts': [candidate['text']], 'xs': [candidate['x']]}
+    merged.append({
+        'name': re.sub(r'\s+', ' ', ' '.join(current['texts'])).strip(),
+        'x': float(np.mean(current['xs']))
+    })
+    return merged
+
+
+def _extract_table_entries(ocr_results):
+    processed = []
+    max_y = 0
+    for bbox, text, confidence in ocr_results:
+        cleaned = text.strip()
+        if not cleaned:
+            continue
+        x, y = _compute_center(bbox)
+        max_y = max(max_y, y)
+        processed.append({'text': cleaned, 'x': float(x), 'y': float(y)})
+
+    if not processed:
+        return [], [], []
+
+    header_threshold = max_y * 0.22
+    header_candidates = [item for item in processed if item['y'] <= header_threshold]
+    headers = _merge_header_candidates(header_candidates)
+    if not headers:
+        return [], [], []
+
+    data_items = [item for item in processed if item['y'] > header_threshold]
+    for item in data_items:
+        column_index = min(range(len(headers)), key=lambda idx: abs(item['x'] - headers[idx]['x']))
+        item['column'] = column_index
+
+    experiment_items = [item for item in data_items if item['column'] == 0]
+    experiment_clusters = _cluster_by_axis(experiment_items, 'y', threshold=45)
+    experiments = []
+    for cluster in experiment_clusters:
+        ordered_texts = sorted(cluster['items'], key=lambda item: item['x'])
+        name = re.sub(r'\s+', ' ', ' '.join(value['text'] for value in ordered_texts)).strip()
+        if name:
+            experiments.append({'name': name, 'y': float(cluster['avg'])})
+    experiments = sorted(experiments, key=lambda entry: entry['y'])
+
+    experiment_order = [exp['name'] for exp in experiments]
+    if not experiment_order:
+        return [], [], []
+
+    cell_map = defaultdict(list)
+    for item in data_items:
+        if item['column'] == 0:
+            continue
+        target_index = None
+        min_distance = 9999
+        for idx, exp in enumerate(experiments):
+            distance = abs(item['y'] - exp['y'])
+            if distance < min_distance and distance <= 55:
+                min_distance = distance
+                target_index = idx
+        if target_index is not None:
+            cell_map[(target_index, item['column'])].append(item)
+
+    entries = []
+    salt_pattern = re.compile(r"盐值[:=：]?\s*([-+]?\d+(?:\.\d+)?)%?[^-+]*?z值[:=：]?\s*([-+]?\d+(?:\.\d+)?)", re.IGNORECASE)
+
+    for (exp_idx, col_idx), items in cell_map.items():
+        header_idx = min(col_idx, len(headers) - 1)
+        parameter = re.sub(r'\s+', ' ', headers[header_idx]['name']).strip()
+        if not parameter:
+            continue
+        ordered_items = sorted(items, key=lambda entry: (entry['y'], entry['x']))
+        cell_text = re.sub(r'\s+', ' ', ' '.join(value['text'] for value in ordered_items))
+        for salt_value, z_value in salt_pattern.findall(cell_text):
+            try:
+                salt = float(salt_value)
+                z = float(z_value)
+            except ValueError:
+                continue
+            entries.append({
+                'experiment': experiments[exp_idx]['name'],
+                'parameter': parameter,
+                'salt': salt,
+                'z': z
+            })
+
+    return entries, experiment_order, [header['name'] for header in headers]
+
+
+def _compute_salt_statistics(entries):
+    grouped = defaultdict(list)
+    for entry in entries:
+        grouped[entry['salt']].append(abs(entry['z']))
+
+    salt_stats = []
+    for salt in sorted(grouped.keys()):
+        values = grouped[salt]
+        total = float(np.sum(values))
+        avg = float(mean(values)) if values else 0.0
+        med = float(median(values)) if values else 0.0
+        var = float(pvariance(values)) if len(values) > 1 else 0.0
+        salt_stats.append({
+            'salt': salt,
+            'count': len(values),
+            'sum_abs': total,
+            'mean_abs': avg,
+            'median_abs': med,
+            'variance_abs': var
+        })
+    return salt_stats
+
+
+def _generate_parameter_charts(entries, experiments):
+    parameter_map = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    for entry in entries:
+        parameter_map[entry['parameter']][entry['salt']][entry['experiment']].append(entry['z'])
+
+    colors = plt.cm.get_cmap('tab10')
+    charts = []
+    for idx, (parameter, salt_groups) in enumerate(parameter_map.items()):
+        fig, ax = plt.subplots(figsize=(8, 4))
+        sorted_salts = sorted(salt_groups.keys())
+        for color_idx, salt in enumerate(sorted_salts):
+            series = []
+            for experiment in experiments:
+                values = salt_groups[salt].get(experiment, [])
+                if values:
+                    series.append(float(np.mean(values)))
+                else:
+                    series.append(np.nan)
+            ax.plot(experiments, series, marker='o', label=f'盐值 {salt}', color=colors(color_idx % colors.N))
+        ax.set_title(f'{parameter} - Z值趋势')
+        ax.set_xlabel('实验组')
+        ax.set_ylabel('Z值')
+        ax.legend(loc='best')
+        ax.grid(True, linestyle='--', alpha=0.3)
+        fig.tight_layout()
+        buffer = io.BytesIO()
+        fig.savefig(buffer, format='png')
+        buffer.seek(0)
+        encoded = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        charts.append({'parameter': parameter, 'image': encoded})
+        plt.close(fig)
+        if len(charts) >= 5:
+            break
+    return charts
 
 
 @app.route('/')
@@ -225,28 +218,50 @@ def index():
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
-    if 'image' not in request.files or request.files['image'].filename == '':
+    if 'image' not in request.files:
+        flash('请先上传图片。')
         return redirect(url_for('index'))
 
     file = request.files['image']
-    filename = file.filename
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(filepath)
+    if file.filename == '':
+        flash('请选择要上传的图片。')
+        return redirect(url_for('index'))
 
-    analysis_results = analyze_palm(filepath, filename)
+    filename = secure_filename(file.filename)
+    unique_name = f"{uuid.uuid4().hex}_{filename}" if filename else f"{uuid.uuid4().hex}.png"
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_name)
+    file.save(file_path)
 
-    if analysis_results['status'] == 'error':
-        return render_template('results.html', error=analysis_results['message'])
+    try:
+        try:
+            Image.open(file_path)
+        except Exception:
+            flash('无法打开上传的图片，请确认文件格式正确。')
+            return redirect(url_for('index'))
 
-    # Generate the URL for the processed image inside the view function
-    processed_image_path = analysis_results['processed_image_path']
-    # We need to get the filename part from the path to pass to url_for
-    processed_filename = os.path.basename(processed_image_path)
-    image_url = url_for('static', filename=f'processed/{processed_filename}')
+        reader = get_ocr_reader()
+        ocr_results = reader.readtext(file_path, detail=1)
+        entries, experiment_order, headers = _extract_table_entries(ocr_results)
 
-    return render_template('results.html',
-                           results=analysis_results['reading'],
-                           image_url=image_url)
+        if not entries:
+            flash('未能从图片中识别到有效的盐值和Z值数据。请尝试更清晰的表格图片。')
+            return redirect(url_for('index'))
+
+        salt_stats = _compute_salt_statistics(entries)
+        charts = _generate_parameter_charts(entries, experiment_order)
+
+        return render_template(
+            'results.html',
+            entries=entries,
+            experiments=experiment_order,
+            salt_stats=salt_stats,
+            charts=charts,
+            headers=headers
+        )
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
 
 if __name__ == '__main__':
     app.run(debug=True)
