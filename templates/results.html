@@ -1,92 +1,170 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>Palmistry AI - Your Results</title>
+    <title>分析结果</title>
     <style>
       body {
-        font-family: sans-serif;
+        font-family: "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+        background: #f8fafc;
+        color: #111827;
+        margin: 0;
         padding: 2rem;
       }
-      h1 {
-        margin-bottom: 2rem;
-        text-align: center;
-      }
-      .content-wrapper {
+      header {
         display: flex;
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 2rem;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
       }
-      .results {
-        flex: 1 1 400px;
-        max-width: 500px;
+      h1 {
+        margin: 0;
+        font-size: 2rem;
+        color: #1e40af;
       }
-      .line {
-        margin-bottom: 1.5rem;
+      a.button {
+        background: #2563eb;
+        color: #fff;
+        padding: 0.7rem 1.1rem;
+        border-radius: 8px;
+        text-decoration: none;
+        transition: background 0.2s ease;
       }
-      h2 {
-        text-transform: capitalize;
-        border-bottom: 2px solid #eee;
-        padding-bottom: 0.5rem;
+      a.button:hover {
+        background: #1d4ed8;
       }
-      .image-display {
-        flex: 1 1 400px;
+      section {
+        background: #ffffff;
+        border-radius: 18px;
+        box-shadow: 0 18px 40px rgba(30, 64, 175, 0.12);
+        padding: 2rem;
+        margin-bottom: 2rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th, td {
+        border-bottom: 1px solid #e2e8f0;
+        padding: 0.75rem;
         text-align: center;
       }
-      .image-display img {
-        max-width: 100%;
-        height: auto;
-        border: 1px solid #ddd;
-        border-radius: 4px;
+      th {
+        background: #eff6ff;
+        color: #1d4ed8;
       }
-      .error {
-        color: #D8000C;
-        background-color: #FFD2D2;
-        border: 1px solid;
-        margin: 10px 0px;
-        padding:15px 10px 15px 50px;
-        background-repeat: no-repeat;
-        background-position: 10px center;
+      tr:last-child td {
+        border-bottom: none;
       }
-      a {
-        display: block;
+      .chart-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 1.5rem;
+      }
+      .chart-card {
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.1);
+        padding: 1rem;
+      }
+      .chart-card h3 {
+        margin-top: 0;
+        font-size: 1.1rem;
+        color: #1f2937;
         text-align: center;
-        margin-top: 2rem;
+      }
+      .raw-table {
+        overflow-x: auto;
+      }
+      .raw-table table {
+        min-width: 720px;
+      }
+      .empty {
+        text-align: center;
+        color: #ef4444;
+        font-weight: 600;
       }
     </style>
   </head>
   <body>
-    <h1>Your Palm Reading</h1>
+    <header>
+      <h1>实验数据分析结果</h1>
+      <a class="button" href="{{ url_for('index') }}">返回重新上传</a>
+    </header>
 
-    {% if error %}
-      <div class="error">
-        <p><strong>Analysis Failed:</strong> {{ error }}</p>
-      </div>
-    {% else %}
-      <div class="content-wrapper">
-        <div class="results">
-          {% for line, analysis in results.items() %}
-            <div class="line">
-              <h2>{{ line }}</h2>
-              <ul>
-                {% for property, meaning in analysis.items() %}
-                  <li><strong>{{ property }}:</strong> {{ meaning }}</li>
-                {% endfor %}
-              </ul>
+    <section>
+      <h2>盐值绝对 Z 值统计</h2>
+      {% if salt_stats %}
+        <table>
+          <thead>
+            <tr>
+              <th>盐值</th>
+              <th>样本数</th>
+              <th>绝对值总和</th>
+              <th>绝对值均值</th>
+              <th>绝对值中位数</th>
+              <th>绝对值方差</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in salt_stats %}
+              <tr>
+                <td>{{ row.salt }}</td>
+                <td>{{ row.count }}</td>
+                <td>{{ '%.4f'|format(row.sum_abs) }}</td>
+                <td>{{ '%.4f'|format(row.mean_abs) }}</td>
+                <td>{{ '%.4f'|format(row.median_abs) }}</td>
+                <td>{{ '%.4f'|format(row.variance_abs) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="empty">未计算出任何盐值统计结果。</p>
+      {% endif %}
+    </section>
+
+    <section>
+      <h2>参数折线图</h2>
+      {% if charts %}
+        <div class="chart-grid">
+          {% for chart in charts %}
+            <div class="chart-card">
+              <h3>{{ chart.parameter }}</h3>
+              <img src="data:image/png;base64,{{ chart.image }}" alt="{{ chart.parameter }} 折线图" style="width:100%; height:auto;" />
             </div>
           {% endfor %}
         </div>
-        {% if image_url %}
-          <div class="image-display">
-            <h2>Detected Lines</h2>
-            <img src="{{ image_url }}" alt="Your palm with detected lines">
-          </div>
-        {% endif %}
-      </div>
-    {% endif %}
+      {% else %}
+        <p class="empty">未能绘制参数折线图。</p>
+      {% endif %}
+    </section>
 
-    <a href="/">Analyze another palm</a>
+    <section>
+      <h2>识别到的原始明细</h2>
+      <div class="raw-table">
+        <table>
+          <thead>
+            <tr>
+              <th>实验组</th>
+              <th>参数</th>
+              <th>盐值</th>
+              <th>Z 值</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for entry in entries %}
+              <tr>
+                <td>{{ entry.experiment }}</td>
+                <td>{{ entry.parameter }}</td>
+                <td>{{ entry.salt }}</td>
+                <td>{{ entry.z }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
   </body>
 </html>

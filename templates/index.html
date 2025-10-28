@@ -1,31 +1,100 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>Palmistry AI</title>
+    <title>实验盐值 OCR 分析</title>
     <style>
       body {
-        font-family: sans-serif;
-        text-align: center;
-        padding: 2rem;
+        font-family: "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+        background-color: #f6f8fb;
+        color: #1f1f1f;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        min-height: 100vh;
+        align-items: center;
+        justify-content: center;
+      }
+      .container {
+        background: #ffffff;
+        border-radius: 16px;
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.15);
+        padding: 3rem;
+        max-width: 560px;
+        width: 90%;
       }
       h1 {
+        margin-top: 0;
+        font-size: 2rem;
+        font-weight: 700;
+        text-align: center;
+        color: #1e40af;
+      }
+      p {
+        line-height: 1.6;
+        color: #475569;
+        text-align: center;
         margin-bottom: 2rem;
       }
       form {
         display: flex;
         flex-direction: column;
-        align-items: center;
-        gap: 1rem;
+        gap: 1.5rem;
+      }
+      input[type="file"] {
+        padding: 1rem;
+        border: 2px dashed #cbd5f5;
+        border-radius: 12px;
+        background: #f8fafc;
+        cursor: pointer;
+        text-align: center;
+      }
+      button {
+        padding: 0.9rem 1.2rem;
+        background: #2563eb;
+        color: #ffffff;
+        font-size: 1rem;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: background 0.2s ease;
+      }
+      button:hover {
+        background: #1d4ed8;
+      }
+      .notice {
+        font-size: 0.9rem;
+        color: #64748b;
+        text-align: center;
+      }
+      .flash {
+        background: #fee2e2;
+        border: 1px solid #fca5a5;
+        color: #b91c1c;
+        padding: 0.8rem 1rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        text-align: center;
       }
     </style>
   </head>
   <body>
-    <h1>Upload a picture of your palm</h1>
-    <form method="post" action="/analyze" enctype="multipart/form-data">
-      <input type="file" name="image" accept="image/*" required>
-      <button type="submit">Analyze Palm</button>
-    </form>
+    <div class="container">
+      <h1>上传实验表格图片</h1>
+      <p>系统将使用 OCR 自动识别表格中不同盐值下的实验参数 Z 值，计算统计指标并绘制折线图。</p>
+      {% with messages = get_flashed_messages() %}
+        {% if messages %}
+          {% for message in messages %}
+            <div class="flash">{{ message }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+      <form method="post" action="{{ url_for('analyze') }}" enctype="multipart/form-data">
+        <input type="file" name="image" accept="image/*" required>
+        <button type="submit">开始分析</button>
+      </form>
+      <p class="notice">支持包含中文与英文文本的截图或拍照图像，建议保持表格清晰、光线均匀。</p>
+    </div>
   </body>
 </html>
