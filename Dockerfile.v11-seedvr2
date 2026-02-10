@@ -1,0 +1,8 @@
+FROM hearmeman/comfyui-wan-template:v11
+
+COPY src/start.sh /opt/comfyui-wan/start.sh
+COPY src/start_script_local.sh /start_script.sh
+
+RUN chmod +x /opt/comfyui-wan/start.sh /start_script.sh
+
+CMD ["/start_script.sh"]

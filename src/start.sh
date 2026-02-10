@@ -150,6 +150,15 @@ else
     git pull
 fi
 
+if [ ! -d "$NETWORK_VOLUME/ComfyUI/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler" ]; then
+    cd $NETWORK_VOLUME/ComfyUI/custom_nodes
+    git clone https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git
+else
+    echo "Updating SeedVR2 VideoUpscaler"
+    cd $NETWORK_VOLUME/ComfyUI/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler
+    git pull
+fi
+
 
 echo "🔧 Installing KJNodes packages..."
 pip install --no-cache-dir -r $NETWORK_VOLUME/ComfyUI/custom_nodes/ComfyUI-KJNodes/requirements.txt &
@@ -166,6 +175,15 @@ VIBE_PID=$!
 echo "🔧 Installing WanAnimatePreprocess packages..."
 pip install --no-cache-dir -r $NETWORK_VOLUME/ComfyUI/custom_nodes/ComfyUI-WanAnimatePreprocess/requirements.txt &
 WAN_ANIMATE_PID=$!
+
+if [ -f "$NETWORK_VOLUME/ComfyUI/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/requirements.txt" ]; then
+    echo "🔧 Installing SeedVR2 VideoUpscaler packages..."
+    pip install --no-cache-dir -r $NETWORK_VOLUME/ComfyUI/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/requirements.txt &
+    SEEDVR2_PID=$!
+else
+    echo "ℹ️  SeedVR2 VideoUpscaler has no requirements.txt, skipping pip install."
+    SEEDVR2_PID=""
+fi
 
 
 export change_preview_method="true"
@@ -511,10 +529,18 @@ VIBE_STATUS=$?
 wait $WAN_ANIMATE_PID
 WAN_ANIMATE_STATUS=$?
 
+if [ -n "$SEEDVR2_PID" ]; then
+    wait $SEEDVR2_PID
+    SEEDVR2_STATUS=$?
+else
+    SEEDVR2_STATUS=0
+fi
+
 echo "✅ KJNodes install complete"
 echo "✅ WanVideoWrapper install complete"
 echo "✅ VibeVoice install complete"
 echo "✅ WanAnimatePreprocess install complete"
+echo "✅ SeedVR2 VideoUpscaler install complete"
 
 # Check results
 if [ $KJ_STATUS -ne 0 ]; then
@@ -534,6 +560,11 @@ fi
 
 if [ $WAN_ANIMATE_STATUS -ne 0 ]; then
   echo "❌ WanAnimatePreprocess install failed."
+  exit 1
+fi
+
+if [ $SEEDVR2_STATUS -ne 0 ]; then
+  echo "❌ SeedVR2 VideoUpscaler install failed."
   exit 1
 fi
 
@@ -600,4 +631,3 @@ nohup python3 "$NETWORK_VOLUME/ComfyUI/main.py" --listen --use-sage-attention > 
     fi
 
     sleep infinity
-fi
